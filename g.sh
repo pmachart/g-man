@@ -3,6 +3,16 @@
 
 function gman() {
 
+  local dir=$PWD
+  local isgit=false
+  until [[ $dir == / ]]; do 
+    [[ -d "$dir/.git" ]] && isgit=true
+    dir=$(dirname "$dir")
+  done
+  if [[ $isgit == false ]] ; then
+    echo -e '\n   Not in a git repository.' ; return
+  fi
+
   local GITROOT=$(git rev-parse --show-toplevel)
   local WORKDIR=$PWD
   local RELDIR=${WORKDIR#$GITROOT}
