@@ -54,6 +54,6 @@ This is just a short list of the available actions. For more details, and to cus
 
 I have built this for my personal use. I am a front-end web developer and bash scripting is not my usual language.
 
-Many former colleagues have seen me use this small tool and asked me to share it with them, and i did. With this repository, I am taking things a step further.
+Many former colleagues have seen me use this small tool and asked me to share it with them, and i did. But it's more convenient to share over github so here we go :)
 
 I have improved it and refactored it a few times and am always looking for advice and constructive criticism, so please feel free to contribute or comment about anything.
