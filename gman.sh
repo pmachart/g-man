@@ -55,7 +55,7 @@ function gman() {
           echo 'error : invalid range '$arg; return 1 # user error : exit
         fi
 
-        if [[ $first > $last ]] ; then # swap range
+        if [[ $first -gt $last ]] ; then # swap range
           local temp=$last
           last=$first
           first=$temp
