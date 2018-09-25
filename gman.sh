@@ -41,10 +41,10 @@ require_git_repo() { DEBUG_LOGGER HR
 build_gitstatus() { DEBUG_LOGGER HR
   rm -f "${GITSTATUSFILE}"
   git status -u --porcelain | cut -c 4- > "${GITSTATUSFILE}"
+  ((DEBUG)) && cat "${GITSTATUSFILE}"
   rm -f "${GITSTATUSPRETTY}"
   git -c color.status=always status -su | nl -ba -s' ' > "${GITSTATUSPRETTY}"
   GITSTATUS_LENGTH="$(wc -l < "${GITSTATUSFILE}")"
-  ((DEBUG)) && cat "${GITSTATUSFILE}"
 }
 
 show_gitstatus() { DEBUG_LOGGER HR
@@ -91,7 +91,7 @@ build_filelist() { DEBUG_LOGGER HR "${ARG}"
       echo "Error : invalid parameter ${ARG}"; return 1
     fi
   fi
-  ((DEBUG)) && echo -e "\nEnd build_filelist : [${FILELIST}]"
+  ((DEBUG)) && echo -e "\nEnd build_filelist : [${FILELIST}]"  || return 0
 }
 
 send_to_clipboard() { # TODO this does not work for filenames with spaces : does not send quotes to xclip
@@ -217,7 +217,7 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
       ;;
     l*l*) OPTIONS+='l' ;;&
     l*a*) OPTIONS+='A' ;;&
-    l*r*) OPTIONS+='r' ;;&
+    l*r*) OPTIONS+='R' ;;&
     l*)
       # TODO : customizable LS command (eg: replace with exa)
       local FILE_DIR
