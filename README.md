@@ -59,38 +59,33 @@ to refresh the list and make sure you are not performing actions on the wrong fi
 ----
 
 ## Available commands
-
 This is just a short list of some of the available actions.
 For more details, and to customize them or add your own, take a look at the script : I have tried my best to keep my coding style as clean and expressive as possible.
 Contributions for more custom commands are very welcome.
 
 ### Git related
-
 | Command and shorthand | Description |
 | --- | --- |
 | add, a | `git add` |
 | oops | adds file to the last non-pushed commit |
 | r, reset | `git reset` |
-| rm | `git rm` (falls back to `rm` if the file isn't tracked)<br> use `rmf` to add the `-f` parameter |
+| rm | `git rm || rm` (does a simple `rm` if the file isn't tracked) adding r to the command adds the -f parameter (eg: g rmf 3) |
 | checkout, co, u | reverts changes to staged or unstaged file |
 | diff, d | shows a `diff` of the file |
 | dc | shows a `diff --cached` of the file |
 
-### Linting and testing
-Before using these, you should open the script file and customize the testing and linting commands, as well as file extensions.
-
+### Eslint / Jest related
 | Command and shorthand | Description |
 | --- | --- |
-| lint | lints the file |
-| fix | lints the file with `--fix` |
-| t | Runs tests on the file, or runs the file itself if it is a test file. |
-| tc | adds the `--coverage` parameter |
-| tw | `--watch` |
-| tu | `--updateSnapshot` |
-| tcwu | you can combine in any order as long as `t` stays first |
+| lint | run `eslint` on the file |
+| fix | run `estlint --fix` on the file |
+| t | Runs `jest` on the file, or runs the file itself if it is a test file.<br>It is configured for `file.js` &#8596; `file.test.js` file naming.<br>You might want to change this. |
+| tc | `jest --coverage` |
+| tw | `jest --watch` |
+| tu | `jest --updateSnapshot` |
+| tcwu | yep, you can combine ! |
 
 ### Filesystem related
-
 | Command and shorthand | Description |
 | --- | --- |
 | cd | `cd` to the folder containing the file |
@@ -100,10 +95,11 @@ Before using these, you should open the script file and customize the testing an
 | vscode, vs | open the file with vscode |
 | atom, o | open the file with atom |
 | l | `ls` of the folder containing the file |
-| l[lar] | add combinable parameters `-l -a -R` to `ls` just like with the test command above |
+| ll | `ls -l` |
+| la | `ls -a` |
+| lla\|lal | `ls -la` |
 
 # Misc.
-
 | Command and shorthand | Description |
 | --- | --- |
 | copy, cp | Copies the selected files ine a one line format to the clipboard. |
@@ -116,18 +112,15 @@ Before using these, you should open the script file and customize the testing an
 ## Customization
 
 ### Actions
-
 You can of course add new actions to the script.
 Look at the existing actions and inspire yourself from them.
 If you come up with some cool stuff, please contribute :)
 
 ### Configuration
-
 You can configure some of the actions of the script to suit your needs.
 Find the user configuration variables at the beginning of the script and fill in your testing or linting commands, typical file extensions, etc.
 
 ### Arguments order
-
 You can use Gman with reversed arguments order if you feel more comfortable with it.
 For example you could type `g 2 a 3 n` to stage file number 2 and nano file number 3.
 Try it out by supplying the `-t` parameter in first position (`g -t 2 a 3 n`)

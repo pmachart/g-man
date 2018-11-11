@@ -94,8 +94,9 @@ build_filelist() { DEBUG_LOGGER HR "${ARG}"
   ((DEBUG)) && echo -e "\nEnd build_filelist : [${FILELIST}]"  || return 0
 }
 
-send_to_clipboard() { # TODO this does not work for filenames with spaces : does not send quotes to xclip
-  # TODO try with xargs
+send_to_clipboard() {
+  # TODO this does not work for filenames with spaces : does not send quotes to xclip
+  # TODO try with xargs ?
   eval echo -n ${FILELIST} | ${CLIPBOARDCMD}
 }
 
@@ -150,6 +151,18 @@ get_folder_name() { DEBUG_LOGGER -n HR "${FILE}"
   fi
 }
 
+require_confirmation() { DEBUG_LOGGER
+  local YN
+  while true; do
+    read -p "${1} (y/n) > " YN
+    case ${YN} in
+      [Yy]* ) return 0 ;;
+      [Nn]* ) echo "${2}"; return 1 ;;
+      * ) echo "Please answer with yes or no". ;;
+    esac
+  done
+}
+
 run_action() { DEBUG_LOGGER HR "${ARG}"
 
   local OPTIONS=''
@@ -165,12 +178,12 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
   ((DEBUG)) && echo -e "${BOLD}--> ${RED}Running action : ${ACTION}${RESET}"
   case ${ACTION} in
 
-    'show' | 's') # TODO : acts weird
+    'show' | 's')
       show_gitstatus
       ;;
     'add' | 'a')   eval git add -- ${FILELIST} ;;
     'oops')
-      eval got add -- ${FILELIST}
+      eval git add -- ${FILELIST}
       git commit --amend --no-edit --no-verify
       ;;
     d*s*) OPTIONS+=" --unified=0 --ignore-space-at-eol --color-words='[[:alnum:]]+|[^[:space:]]'" ;;&
@@ -195,7 +208,7 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
 
     'bak')
       for FILE in "${FILEARRAY[@]}" ; do
-        eval cp ${FILE} ${FILE}.bak
+        require_files_exist && eval cp ${FILE} ${FILE}.bak
       done
       ;;
 
@@ -226,7 +239,6 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
       ls -BhF${OPTIONS} --group-directories-first "${FILE_DIR}"
       ;;
 
-    rm*r*) OPTIONS+=' -r' ;;& # TODO is this really useful ?
     rm*f*) OPTIONS+=' -f' ;;&
     rm*)
       require_files_exist || return 1
@@ -234,16 +246,16 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
       ;;
 
     'lintfix' | 'lf') OPTIONS+=' --fix --stdin --stdin-filename' ;;&
-    'lint' | 'l') # TODO check if it works
+    'lint' | 'l')
       eval ${LINTCMD} ${OPTIONS} ${FILELIST}
       ;;
 
-    t*)   if [[ -z ${TESTCMD} ]] ; then echo 'No test command configured' ; fi ;;
+    t*)   if [[ -z ${TESTCMD} ]] ; then echo 'No test command configured' ; return 1 ; fi ;;
     t*c*) OPTIONS+=' --coverage' ;;&
     t*u*) OPTIONS+=' --updateSnapshot' ;;&
     t*w*) OPTIONS+=' --watch' ;;&
     t*n*) OPTIONS+=' --no-cache' ; rm -rf "${TESTCACHEFOLDER}" ;;&
-    t*) # TODO check if it works
+    t*)
       for FILE in "${FILEARRAY[@]}" ; do
         local BASEDIR=$(dirname ${FILE})
         local RELDIR=${BASEDIR#$GITROOT}
@@ -261,24 +273,18 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
       ;;
 
     *)
-      echo "Error : unrecognized action : ${ACTION}"
+      echo "Warning : unrecognized action : ${ACTION}"
       # TODO : get rest of arguments. use shift to get rid of args progressively
-      echo -e "The command ${ACTION} is not registered in Gman and thus may have unforeseeable consequences."
-      local YN
-      while true; do
-        read -p "Proceed anyway ? (y/n) >" YN
-        case ${YN} in
-          [Yy]* ) exec <&-; eval ${ACTION} ${FILELIST} ;;
-          [Nn]* ) exec <&-; echo "Aborting"; return 1 ;;
-          * ) echo "Please answer yes or no". ;;
-        esac
-      done
+      echo -e "The command '${ACTION}' is not registered in Gman and thus may have unforeseeable consequences."
+      require_confirmation "Do you want to run '${ACTION} ${FILELIST}' ?" "Aborting." || return 1
+      eval ${ACTION} ${FILELIST}
       ;;
   esac
 }
 
 gman() {
 
+  # user config variables are declared below so they can be set in a function at the top of the script
   local REVERSED
   local TESTCMD
   local TESTCACHEFOLDER
@@ -286,9 +292,8 @@ gman() {
   local EXTTEST
   local LINTCMD
   local CLIPBOARDCMD
-  # user config variables are declared above so they can be set in a function at the top of the script
 
-  set_user_config
+  set_user_config # calling the user config setting function
 
   require_git_repo || return 1
 
@@ -304,7 +309,7 @@ gman() {
   local FILELIST=''
   local NBFILES=0
   local ACTION=''
-  local NEXTACTION='view'
+  local NEXTACTION='view' # default action if none is supplied
 
   if [[ ${1} == '-r' ]] ; then shift ; REVERSED=1 ; fi
   ((DEBUG)) && ((REVERSED)) && echo 'Reversed arguments'
