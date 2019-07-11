@@ -1,54 +1,68 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+#  Gman : a CLI helper tool for daily Git usage.
+#
+#  Project home : https://github.com/pmachart/g-man
+#  Released under MIT License
+#
 
 set_user_config() {
 
   ############## USER CONFIG ##############
 
-  REVERSED=0 # optionally reversing arguments
+  REVERSED=0 # optionally reversing argument order
   TESTCMD='./node_modules/.bin/jest'
   #if [[ -f package.json ]] ; then TESTCMD=$(node -pe "require('./package.json').scripts.test") ; fi
   TESTCACHEFOLDER='/tmp/jest_rs' # /!\ gets rm-rf'ed when test actions are called with nocache arg
   EXTMAIN='js' # file extension of the tested language
   EXTTEST='test' # file extension of the test files
   LINTCMD='./node_modules/.bin/tslint'
-  CLIPBOARDCMD='xclip'
+  CLIPBOARDCMD='xclip' # command to send `view` output to clipboard
+  DEFAULTACTION='view' # default action if none is supplied
 
   ############ END USER CONFIG ############
+
+  DEBUG=0 # verbose debug output
+
 }
 
-DEBUG_LOGGER() {
-  ((DEBUG)) && (
-    local OPT
-    [[ ${1} == "-n" ]] && shift && OPT='-n'
-    [[ ${1} == "HR" ]] && shift && type -t horiz && horiz # using type to check if alias exists
-    # horiz = horizontal ruler alias. check my dotfiles for it, or replace with echo ------------
-    echo ${OPT} "${FUNCNAME[1]^^} ${1}"
-  )
+display_help() { # TODO
+cat <<'EOF'
+usage: g [-h | --help] [-r | --reversed] [-c | --clear] [-d | --debug] [s | show]
+         [1-99] [cd] [v | view] [p | print] [clip] [bak] [rm] [rmf | rm -f]
+         [touch] [vi | vim] [n | nano] [vs | code] [at | atom] [c | cat] [b | bat] [m | most]
+         [l] [ll | l -l] [la | l -A] [lr | l -R] [lla | l -lA] [llr | l -lR] [lar | l -AR] [llar | l -lAR]
+         [a | add] [oops] [d | diff] [dc | diff --cached] [dh | diff HEAD] [ds]
+         [u | co | checkout] [h | hist] [r | reset]
+         [t] [tc | t --coverage] [tu | t --updateSnapshot] [tw | t --watch] [tn | t --no-cache]
+         [lt | lint] [ltf | lintfix]
+
+Go to https://github.com/pmachart/g-man for the full documentation.
+EOF
 }
 
-require_git_repo() { DEBUG_LOGGER HR
-  local ISGIT=false
-  local DIR=${PWD}
-  until [[ ${DIR} == / ]]; do
-    [[ -d "${DIR}/.git" ]] && ISGIT=true
-    DIR=$(dirname "${DIR}")
-  done
-  if [[ ${ISGIT} == false ]] ; then
-    echo -e '\n   Not in a git repository.'; return 1
-  fi
+LOGGER() { # simple debug output wrapper with some formatting
+  local OPT
+  [[ ${1} == '-n' ]] && { shift ; OPT='-n' ; }
+  [[ ${1} == '-h' ]] && { shift ; ( type -t horiz &>/dev/null && horiz || echo ---------------------------- ) ; }
+  # horiz : 100% width horizontal ruler alias. check my dotfiles for it.
+  # TODO : rewrite horiz in a simpler way and include it in Gman
+  # check alias existence with `type` and fallback to echo --------- if not found
+  echo ${OPT} "${FUNCNAME[1]^^} ${1}"
 }
 
-build_gitstatus() { DEBUG_LOGGER HR
+build_gitstatus() { ((DEBUG)) && LOGGER -h # `git status` output is stored in two text files
   rm -f "${GITSTATUSFILE}"
-  git status -u --porcelain | cut -c 4- > "${GITSTATUSFILE}"
+  mkdir -p $(dirname "${GITSTATUSFILE}")
+  git status -u --porcelain | cut -c 4- > "${GITSTATUSFILE}" # one for parsing
   ((DEBUG)) && cat "${GITSTATUSFILE}"
   rm -f "${GITSTATUSPRETTY}"
-  git -c color.status=always status -su | nl -ba -s' ' > "${GITSTATUSPRETTY}"
+  git -c color.status=always status -su | nl -ba -s' ' > "${GITSTATUSPRETTY}" # one for display
   GITSTATUS_LENGTH="$(wc -l < "${GITSTATUSFILE}")"
 }
 
-show_gitstatus() { DEBUG_LOGGER HR
-  if [[ ${GITSTATUS_LENGTH} -gt 0 ]] ; then
+show_gitstatus() { ((DEBUG)) && LOGGER -h
+  if (( ${GITSTATUS_LENGTH} > 0 )) ; then
     echo
     cat "${GITSTATUSPRETTY}"
     echo
@@ -64,11 +78,11 @@ add_to_filelist() {
   FILELIST+=" ${FILE}"
   FILEARRAY+=("${FILE}")
 
-  DEBUG_LOGGER "${FILE}"
+  ((DEBUG)) && LOGGER "${FILE}"
   FILELIST="${FILELIST# }" # strip first space
 }
 
-build_filelist() { DEBUG_LOGGER HR "${ARG}"
+build_filelist() { ((DEBUG)) && LOGGER -h "${ARG}"
   local FIRST=0
   local LAST=0
 
@@ -76,49 +90,43 @@ build_filelist() { DEBUG_LOGGER HR "${ARG}"
     FIRST=$(echo "${ARG}" | cut -f1 -d-)
     LAST=$(echo "${ARG}" | cut -f2 -d-)
 
-    if [[ ${FIRST} -gt ${LAST} ]] ; then # swap range
-      local TEMP=${LAST}
+    if (( ${FIRST} > ${LAST} )) ; then # swap range
+      local -r TEMP=${LAST}
       LAST=${FIRST}
       FIRST=${TEMP}
     fi
-    for i in $(seq "${FIRST}" "${LAST}"); do
+    local i
+    for i in $(seq "${FIRST}" "${LAST}") ; do
       add_to_filelist "${i}"
     done
   else # single parameter
     if grep -q '^[0-9]*$' <<< "${ARG}" ; then # numeric check
       add_to_filelist "${ARG}"
     else
-      echo "Error : invalid parameter ${ARG}"; return 1
+      echo "Error : invalid parameter ${ARG}" >&2 ; return 1
     fi
   fi
   ((DEBUG)) && echo -e "\nEnd build_filelist : [${FILELIST}]"  || return 0
 }
 
 send_to_clipboard() {
-  # TODO this does not work for filenames with spaces : does not send quotes to xclip
-  # TODO try with xargs ?
+  # TODO : this does not work for filenames with spaces : does not send quotes to xclip. try with xargs ?
+  [[ ! $(command -v "${CLIPBOARDCMD}") ]] && {
+    printf '  The specified clipboard command "%s" is not installed.\n' ${CLIPBOARDCMD}
+    printf '  Please install it or configure another one in the user config.\n'
+    eval echo -n ${FILELIST}
+    return 0
+  }
   eval echo -n ${FILELIST} | ${CLIPBOARDCMD}
 }
 
-display_files() { DEBUG_LOGGER "${ACTION}"
-  local OUTPUT=''
-
-  for FILE in "${FILEARRAY[@]}" ; do
-    OUTPUT+="  ${FILE}\n"   # newline separated list for OUTPUT
-  done
-
-  if [[ ${ACTION} != 'view' ]] ; then
-    # called with PRINT action ? simple output for piping and xargsing
-    echo -e " ${FILELIST}"
-    return 1
-  fi
-
-  echo -e "\nSelected files :\n${OUTPUT}"
+display_files() { ((DEBUG))
+  echo -e "\nSelected files :\n$(IFS=$'\n'; echo "${FILEARRAY[*]}" | sed "s/^/  /";)\n"
   send_to_clipboard
 }
 
 
-require_files_exist() { DEBUG_LOGGER
+require_files_exist() { ((DEBUG)) && LOGGER
   FILELIST=''
   local NOFILES=1
   local NEWFILEARRAY=()
@@ -138,32 +146,39 @@ require_files_exist() { DEBUG_LOGGER
   done
 
   FILEARRAY=(${NEWFILEARRAY[@]})
-  ((NOFILES)) && echo "${BOLD}${RED}Error: None of the selected files exist. Aborting.${RESET}" && return 1 || return 0
+
+  ((NOFILES)) && echo "${BOLD}${RED}Error: None of the selected files exist. Aborting.${RESET}" >&2
+  return ${NOFILES}
 }
 
-get_folder_name() { DEBUG_LOGGER -n HR "${FILE}"
+get_folder_name() { ((DEBUG)) && LOGGER -n -h "${FILE}"
   # TODO : handle symlinks
   declare -n RETURN=$1
   RETURN="${2}"
-  if [ -f "${2}" ] ; then
+  if [[ -f "${2}" ]] ; then
     RETURN=$(dirname "${2}")
     ((DEBUG)) && echo ": ${RETURN}"
   fi
 }
 
-require_confirmation() { DEBUG_LOGGER
+require_confirmation() { ((DEBUG)) && LOGGER
   local YN
+  local MSGYES
+  local MSGNO
+  [[ -z ${2} ]] && MSGYES='Proceeding.' || MSGYES=${2}
+  [[ -z ${3} ]] && MSGNO='Aborting.'    || MSGNO=${3}
   while true; do
     read -p "${1} (y/n) > " YN
+    YN=$(echo "${YN}" | awk '{print tolower($0)}')
     case ${YN} in
-      [Yy]* ) return 0 ;;
-      [Nn]* ) echo "${2}"; return 1 ;;
+      y|yes ) echo "${MSGYES}"; return 0 ;;
+      n|no )  echo "${MSGNO}";  return 1 ;;
       * ) echo "Please answer with yes or no". ;;
     esac
   done
 }
 
-run_action() { DEBUG_LOGGER HR "${ARG}"
+run_action() { ((DEBUG)) && LOGGER -h "${ACTION}"
 
   local OPTIONS=''
 
@@ -172,16 +187,17 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
     ((DEBUG)) && echo 'No file in list. Building gitstatus.'
     build_gitstatus
     ARG="1-${GITSTATUS_LENGTH}"
-    build_filelist || return 1 # passing down returns because we run in source mode
+    build_filelist || return 1 # passing returns up
   fi
 
-  ((DEBUG)) && echo -e "${BOLD}--> ${RED}Running action : ${ACTION}${RESET}"
+  ((DEBUG)) && echo -e "${BOLD}--> ${RED}Running action : ${ACTION} ${FILELIST}${RESET}"
   case ${ACTION} in
 
     'show' | 's')
       show_gitstatus
+      return 0
       ;;
-    'add' | 'a')   eval git add -- ${FILELIST} ;;
+    'add' | 'a')   eval git add "${ARGOPTION}" -- ${FILELIST} ;;
     'oops')
       eval git add -- ${FILELIST}
       git commit --amend --no-edit --no-verify
@@ -190,7 +206,7 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
     d*c*) OPTIONS+=" --cached" ;;&
     d*h*) OPTIONS+=" HEAD" ;;&
     d*)
-      eval git diff ${OPTIONS} -- ${FILELIST}
+      eval git diff "${OPTIONS}" "${ARGOPTION}" -- ${FILELIST}
       ;;
     'checkout' | 'co' | 'u')
       for FILE in "${FILEARRAY[@]}" ; do
@@ -200,11 +216,14 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
         eval git checkout -- ${FILE}
       done
       ;;
-    'stash')       eval git stash push -- ${FILELIST} ;; # TODO read about git stash pushing
-    'hist'  | 'h') eval git log -u -- ${FILELIST} ;;
+    # 'stash')       eval git stash push -- ${FILELIST} ;; # TODO make sure this works as excpected
+    'hist'  | 'h') eval git log -u "${ARGOPTION}" -- ${FILELIST} ;;
     'reset' | 'r') eval git reset -- ${FILELIST} ;;
 
-
+    'lintfix' | 'ltf') OPTIONS+=' --fix --stdin --stdin-filename' ;;&
+    'lint' | 'lt')
+      eval ${LINTCMD} "${OPTIONS}" ${FILELIST}
+      ;;
 
     'bak')
       for FILE in "${FILEARRAY[@]}" ; do
@@ -213,14 +232,15 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
       ;;
 
     'touch')       eval touch ${FILELIST} ;; # sometimes used as a git quickfix
-    'vim'  | 'v')  eval vim  ${FILELIST} ;;
+    'vim'  | 'vi') eval vim  ${FILELIST} ;;
     'nano' | 'n')  eval nano ${FILELIST} ;;
     'code' | 'vs') eval code ${FILELIST} ;;
-    'atom' | 'o')  eval atom ${FILELIST} ;;
+    'atom' | 'at') eval atom ${FILELIST} ;;
     'cat'  | 'c')  require_files_exist && eval cat ${FILELIST} ;;
-    'bat'  | 'b')  require_files_exist && eval bat ${FILELIST} ;;
+    'bat'  | 'b')  require_files_exist && eval bat "${ARGOPTION}" ${FILELIST} ;;
     'most' | 'm')  eval most  ${FILELIST} ;;
-    'print' | 'p' | 'view') display_files ;;
+    'print'| 'p')  echo -e " ${FILELIST}" ;;
+    'view' | 'v')  display_files ;;
     'clip') send_to_clipboard ;;
 
     'cd')
@@ -236,21 +256,16 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
       local FILE_DIR
       get_folder_name FILE_DIR "${FILE}"
       echo "> ls ${FILE_DIR}"
-      ls -BhF${OPTIONS} --group-directories-first "${FILE_DIR}"
+      ls -BhF${OPTIONS} "${ARGOPTION}" --group-directories-first "${FILE_DIR}"
       ;;
 
-    rm*f*) OPTIONS+=' -f' ;;&
+    rmf) OPTIONS+=' -f' ;;&
     rm*)
       require_files_exist || return 1
-      eval git rm ${OPTIONS} -- ${FILELIST} 2>/dev/null || rm ${OPTIONS} ${FILELIST}
+      eval git rm "${OPTIONS}" "${ARGOPTION}" -- ${FILELIST} 2>/dev/null || rm -i "${OPTIONS}" ${FILELIST}
       ;;
 
-    'lintfix' | 'lf') OPTIONS+=' --fix --stdin --stdin-filename' ;;&
-    'lint' | 'l')
-      eval ${LINTCMD} ${OPTIONS} ${FILELIST}
-      ;;
-
-    t*)   if [[ -z ${TESTCMD} ]] ; then echo 'No test command configured' ; return 1 ; fi ;;
+    t*)   if [[ -z ${TESTCMD} ]] ; then echo 'No test command configured' ; return 1 ; fi ;;&
     t*c*) OPTIONS+=' --coverage' ;;&
     t*u*) OPTIONS+=' --updateSnapshot' ;;&
     t*w*) OPTIONS+=' --watch' ;;&
@@ -262,9 +277,9 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
         local BASENAME=$(basename ${FILE})
         local BASENOEXT=${BASENAME%.${EXTMAIN}}
         local BASENOEXT=${BASENOEXT%.${EXTTEST}}
-        type -t horiz && horiz # TODO colored line with variable variable
+        type -t horiz && horiz || echo '----------------------------'
         echo "  ${CYAN}${BOLD}Testing ${RED}${BASENOEXT}.${EXTMAIN}${CYAN} with params:${RED}${TESTPARAMS}${RESET}"
-        type -t horiz && horiz
+        type -t horiz && horiz || echo '----------------------------'
         eval ${TESTCMD} ${TESTPARAMS} ${RELDIR}/${BASENOEXT}.${EXTTEST}.${EXTMAIN}
         if [[ ${ARG} =~ o && ${ARG} =~ c ]] ; then
           xdg-open ./coverage/lcov-report/${BASENOEXT}.${EXTMAIN}.html > /dev/null 2>/dev/null # TODO redirect too long
@@ -274,99 +289,148 @@ run_action() { DEBUG_LOGGER HR "${ARG}"
 
     *)
       echo "Warning : unrecognized action : ${ACTION}"
-      # TODO : get rest of arguments. use shift to get rid of args progressively
+      # TODO : ability to pass -x/--x options to action with -- separation ?
       echo -e "The command '${ACTION}' is not registered in Gman and thus may have unforeseeable consequences."
-      require_confirmation "Do you want to run '${ACTION} ${FILELIST}' ?" "Aborting." || return 1
-      eval ${ACTION} ${FILELIST}
+      require_confirmation "Do you want to run '${ACTION} ${FILELIST}' ?" || return 1
+      eval ${ACTION} "${ARGOPTION}" ${FILELIST}
       ;;
   esac
 }
 
 gman() {
 
-  # user config variables are declared below so they can be set in a function at the top of the script
+  [[ ! $(command -v git) ]] && {
+    echo "\n  Gman requires git to be installed. Exiting."
+    return 1
+  }
+  [[ ! $(git rev-parse --show-toplevel 2>/dev/null) ]] && {
+    echo -e "\n  Gman cannot be used outside git repositories. Exiting."
+    return 1
+  }
+
+  local GITROOT
+  GITROOT=$(git rev-parse --show-toplevel)
+
+  cd "${GITROOT}"
+
+  # declaring user config variables
   local REVERSED
+  local DEBUG
   local TESTCMD
   local TESTCACHEFOLDER
   local EXTMAIN
   local EXTTEST
   local LINTCMD
   local CLIPBOARDCMD
+  local DEFAULTACTION
 
-  set_user_config # calling the user config setting function
+  # calling the userconfig setting function to initialize the variables declared above
+  set_user_config
 
-  require_git_repo || return 1
+  # command options. processed after user config for priority.
+  while [[ ${1} =~ ^- ]] ; do # TODO : try using getopts ?
+    local opt=${1}
+    shift
+    case ${opt} in
+      -r|--reversed) REVERSED=1 ;;
+      -d|--debug)    DEBUG=1 ;;
+      -c|--clear)    [[ -f ${GITSTATUSFILE} ]] && { rm -f "${GITSTATUSFILE}" "${GITSTATUSPRETTY}" ; return 1 ; } ;;
+      -h|--help)     display_help ; return 1 ;;
+      --)            break ;;
+      *) require_confirmation "Invalid Gman option '${1}'. Ignore & continue ?" && shift || return 1 ;;
+    esac
+  done
 
-  local WORKDIR=${PWD}
-  local GITROOT
-    GITROOT=$(git rev-parse --show-toplevel)
-  local GITSTATUSFILE=${GITROOT}/.git/.gman_gitstatus
-  local GITSTATUSPRETTY=${GITROOT}/.git/.gman_gitstatus_pretty
+  ((DEBUG)) && { clear ; printf 'gman %s\n' "${@}" ; } # term readability when debugging
+  ((DEBUG)) && ((REVERSED)) && echo 'Reversed arguments'
+
+
+  local -r WORKDIR=${PWD}
+  local -r GITROOTDIR=$(basename ${GITROOT})
+  local -r GITSTATUSFILE=/tmp/gman/${GITROOTDIR}/.gman_gitstatus
+  local -r GITSTATUSPRETTY=/tmp/gman/${GITROOTDIR}/.gman_gitstatus_pretty
   local GITSTATUS_LENGTH=0
 
   local FILE=''
   local FILEARRAY=()
   local FILELIST=''
   local NBFILES=0
+
   local ACTION=''
-  local NEXTACTION='view' # default action if none is supplied
+  local NEXTACTION=''
+  local LASTACTION=''
 
-  if [[ ${1} == '-r' ]] ; then shift ; REVERSED=1 ; fi
-  ((DEBUG)) && ((REVERSED)) && echo 'Reversed arguments'
-
-  local ARGS=( "${@}" )
+  local -r ARGS=( "${@}" )
   local ARG=''
-  local NBARG=0
+  local ARGOPTION=''
+  local NEXTOPTION=''
 
   cd "${GITROOT}"
 
 
-  if [[ ${#} == 0 || ! -f ${GITSTATUSFILE} ]] || [[ -f ${GITSTATUSFILE} && "$(wc -l < "${GITSTATUSFILE}")" -eq 0 ]] ; then
-    # no args and no gitstatusfile, or an empty gitstatusfile
-    build_gitstatus
-    show_gitstatus
+  # called with no args or missing or empty gitstatusfile ?
+  if [[ ${#} == 0 || ! -f ${GITSTATUSFILE} ]] \
+     || [[ -f ${GITSTATUSFILE} && "$(wc -l < "${GITSTATUSFILE}" | awk '{print $1}')" -eq 0 ]] ; then
+    build_gitstatus && show_gitstatus || return 1
+    cd "${WORKDIR}"
     return 0
   fi
 
 
-  for ARG in "${ARGS[@]}" ; do # loop through all args, both file numbers and actions
-  ((NBARG++))
+  local i
+  for (( i=0 ; i<"${#ARGS[@]}" ; i++ )) ; do
+    ARG=${ARGS[i]}
+    ((DEBUG)) && horiz
 
-    if ! grep -q '^[a-zA-Z]*$' <<< "${ARG}" ; then # arg is file number
+
+    if grep -q '^[1-9].*[1-9]*$' <<< "${ARG}" ; then # arg is number or range
 
       build_filelist || return 1
 
-    else # is action
-
-      ARG=${ARG,,} # tolowercase in bash 4
-      if [[ ! ${NBARG} == 1 ]] ; then
-        ACTION=${NEXTACTION}
+      if [[ $((i+1)) -eq ${#} ]] ; then # last arg
+        ACTION=${DEFAULTACTION}
+        ((REVERSED)) && { ACTION=${NEXTACTION} ; ARGOPTION=${NEXTOPTION} ; }
       fi
-      NEXTACTION=${ARG}
 
-      # if running with reversed args, the action to be run with the files is ARG
-      ((REVERSED)) && ACTION=${ARG} && NEXTACTION='view'
+    else # arg is action
+
+      ARG=$(echo "${ARG}" | awk '{print tolower($0)}')
+
+      if ((REVERSED)) ; then
+        [[ -n "${NEXTACTION}" ]] && { ACTION=${NEXTACTION} ; ARGOPTION=${NEXTOPTION} ; }
+        NEXTACTION=${ARG}
+      else
+        ACTION=${ARG}
+      fi
+
+      # EXPERIMENTAL : passing options to actions.
+      while [[ "${ARGS[$((i+1))]}" =~ ^- ]] ; do # look ahead for -options
+        ((REVERSED)) && NEXTOPTION+=" ${ARGS[$((i+1))]}" || ARGOPTION+=" ${ARGS[$((i+1))]}"
+        ((i++))
+      done
+
+      ((REVERSED)) && [[ $((i+1)) -eq ${#} ]] && LASTACTION=${ARG}
 
     fi
 
-    if [[ ${NBARG} -eq ${#} ]] ; then
-      ACTION=${NEXTACTION}
-    fi
 
-    if [[ ${ACTION} ]] ; then
-      run_action "${ACTION}" || return 1
+    if [[ -n "${ACTION}" ]] ; then
 
-      # reset file list for next action
+      run_action || return 1
+
+      # reset variables for next action
       FILEARRAY=()
       FILELIST=''
       NBFILES=0
       ACTION=''
+      ARGOPTION=''
     fi
 
   done
 
+  [[ -n "${LASTACTION}" ]] && { ACTION=${LASTACTION} ; run_action ; } || return 1
+
   cd "${WORKDIR}"
 }
 
-((DEBUG)) && clear
 gman "${@}"
