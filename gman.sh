@@ -67,7 +67,13 @@ show_gitstatus() { ((DEBUG)) && LOGGER -h
     cat "${GITSTATUSPRETTY}"
     echo
   else
-    echo -e '\n   "Looks clear."\n'
+    if [[ -z ${RIDDICK} ]] ; then
+      echo -e '\n   "Looks clear."\n'
+      export RIDDICK=true
+    else
+      echo -e '\n   "I said it looked clear."\n'
+      unset RIDDICK
+    fi
   fi
 }
 
