@@ -42,16 +42,14 @@ EOF
 }
 
 LOGGER() { # simple debug output wrapper with some formatting
+  ((! DEBUG)) && return 0
   local OPT
   [[ ${1} == '-n' ]] && { shift ; OPT='-n' ; }
-  [[ ${1} == '-h' ]] && { shift ; ( type -t horiz &>/dev/null && horiz || echo ---------------------------- ) ; }
-  # horiz : 100% width horizontal ruler alias. check my dotfiles for it.
-  # TODO : rewrite horiz in a simpler way and include it in Gman
-  # check alias existence with `type` and fallback to echo --------- if not found
+  [[ ${1} == '-h' ]] && { shift ; printf '━%.0s' $(seq $(tput cols)) ; }
   echo ${OPT} "${FUNCNAME[1]^^} ${1}"
 }
 
-build_gitstatus() { ((DEBUG)) && LOGGER -h # `git status` output is stored in two text files
+build_gitstatus() { LOGGER -h # `git status` output is stored in two text files
   rm -f "${GITSTATUSFILE}"
   mkdir -p $(dirname "${GITSTATUSFILE}")
   git status -u --porcelain | cut -c 4- > "${GITSTATUSFILE}" # one for parsing
@@ -61,7 +59,7 @@ build_gitstatus() { ((DEBUG)) && LOGGER -h # `git status` output is stored in tw
   GITSTATUS_LENGTH="$(wc -l < "${GITSTATUSFILE}")"
 }
 
-show_gitstatus() { ((DEBUG)) && LOGGER -h
+show_gitstatus() { LOGGER -h
   if (( ${GITSTATUS_LENGTH} > 0 )) ; then
     echo
     cat "${GITSTATUSPRETTY}"
@@ -78,17 +76,17 @@ add_to_filelist() {
   FILELIST+=" ${FILE}"
   FILEARRAY+=("${FILE}")
 
-  ((DEBUG)) && LOGGER "${FILE}"
+  LOGGER "${FILE}"
   FILELIST="${FILELIST# }" # strip first space
 }
 
-build_filelist() { ((DEBUG)) && LOGGER -h "${ARG}"
+build_filelist() { LOGGER -h "${ARG}"
   local FIRST=0
   local LAST=0
 
   if [[ ${ARG} =~ ^[0-9]+-[0-9]+$ ]] ; then # parameter is range of numbers
-    FIRST=$(echo "${ARG}" | cut -f1 -d-)
-    LAST=$(echo "${ARG}" | cut -f2 -d-)
+    FIRST=$(echo "${ARG}" | cut --fields=1 --delimiter='-')
+    LAST=$(echo "${ARG}" | cut --fields=2 --delimiter='-')
 
     if (( ${FIRST} > ${LAST} )) ; then # swap range
       local -r TEMP=${LAST}
@@ -100,10 +98,10 @@ build_filelist() { ((DEBUG)) && LOGGER -h "${ARG}"
       add_to_filelist "${i}"
     done
   else # single parameter
-    if grep -q '^[0-9]*$' <<< "${ARG}" ; then # numeric check
+    if grep --quiet '^[0-9]*$' <<< "${ARG}" ; then # numeric check
       add_to_filelist "${ARG}"
     else
-      echo "Error : invalid parameter ${ARG}" >&2 ; return 1
+      echo "Error : invalid parameter ${ARG}" >&2 ; return 10
     fi
   fi
   ((DEBUG)) && echo -e "\nEnd build_filelist : [${FILELIST}]"  || return 0
@@ -126,7 +124,7 @@ display_files() { ((DEBUG))
 }
 
 
-require_files_exist() { ((DEBUG)) && LOGGER
+require_files_exist() { LOGGER
   FILELIST=''
   local NOFILES=1
   local NEWFILEARRAY=()
@@ -151,7 +149,7 @@ require_files_exist() { ((DEBUG)) && LOGGER
   return ${NOFILES}
 }
 
-get_folder_name() { ((DEBUG)) && LOGGER -n -h "${FILE}"
+get_folder_name() { LOGGER -n -h "${FILE}"
   # TODO : handle symlinks
   declare -n RETURN=$1
   RETURN="${2}"
@@ -161,7 +159,7 @@ get_folder_name() { ((DEBUG)) && LOGGER -n -h "${FILE}"
   fi
 }
 
-require_confirmation() { ((DEBUG)) && LOGGER
+require_confirmation() { LOGGER
   local YN
   local MSGYES
   local MSGNO
@@ -172,13 +170,13 @@ require_confirmation() { ((DEBUG)) && LOGGER
     YN=$(echo "${YN}" | awk '{print tolower($0)}')
     case ${YN} in
       y|yes ) echo "${MSGYES}"; return 0 ;;
-      n|no )  echo "${MSGNO}";  return 1 ;;
+      n|no )  echo "${MSGNO}";  return 20 ;;
       * ) echo "Please answer with yes or no". ;;
     esac
   done
 }
 
-run_action() { ((DEBUG)) && LOGGER -h "${ACTION}"
+run_action() { LOGGER -h "${ACTION}"
 
   local OPTIONS=''
 
@@ -187,7 +185,7 @@ run_action() { ((DEBUG)) && LOGGER -h "${ACTION}"
     ((DEBUG)) && echo 'No file in list. Building gitstatus.'
     build_gitstatus
     ARG="1-${GITSTATUS_LENGTH}"
-    build_filelist || return 1 # passing returns up
+    build_filelist || return ${?} # passing returns up
   fi
 
   ((DEBUG)) && echo -e "${BOLD}--> ${RED}Running action : ${ACTION} ${FILELIST}${RESET}"
@@ -261,11 +259,12 @@ run_action() { ((DEBUG)) && LOGGER -h "${ACTION}"
 
     rmf) OPTIONS+=' -f' ;;&
     rm*)
-      require_files_exist || return 1
-      eval git rm "${OPTIONS}" "${ARGOPTION}" -- ${FILELIST} 2>/dev/null || rm -i "${OPTIONS}" ${FILELIST}
+      require_files_exist || return ${?}
+#      eval git rm "${OPTIONS}" "${ARGOPTION}" -- ${FILELIST} 2>/dev/null || rm -i "${OPTIONS}" ${FILELIST}
+      eval git rm "${OPTIONS}" "${ARGOPTION}" ${FILELIST} 2>/dev/null || rm -i "${OPTIONS}" ${FILELIST}
       ;;
 
-    t*)   if [[ -z ${TESTCMD} ]] ; then echo 'No test command configured' ; return 1 ; fi ;;&
+    t*)   if [[ -z ${TESTCMD} ]] ; then echo 'No test command configured' ; return 30 ; fi ;;&
     t*c*) OPTIONS+=' --coverage' ;;&
     t*u*) OPTIONS+=' --updateSnapshot' ;;&
     t*w*) OPTIONS+=' --watch' ;;&
@@ -291,7 +290,7 @@ run_action() { ((DEBUG)) && LOGGER -h "${ACTION}"
       echo "Warning : unrecognized action : ${ACTION}"
       # TODO : ability to pass -x/--x options to action with -- separation ?
       echo -e "The command '${ACTION}' is not registered in Gman and thus may have unforeseeable consequences."
-      require_confirmation "Do you want to run '${ACTION} ${FILELIST}' ?" || return 1
+      require_confirmation "Do you want to run '${ACTION} ${FILELIST}' ?" || return 31
       eval ${ACTION} "${ARGOPTION}" ${FILELIST}
       ;;
   esac
@@ -301,11 +300,11 @@ gman() {
 
   [[ ! $(command -v git) ]] && {
     echo "\n  Gman requires git to be installed. Exiting."
-    return 1
+    return 40
   }
   [[ ! $(git rev-parse --show-toplevel 2>/dev/null) ]] && {
     echo -e "\n  Gman cannot be used outside git repositories. Exiting."
-    return 1
+    return 41
   }
 
   local GITROOT
@@ -334,10 +333,10 @@ gman() {
     case ${opt} in
       -r|--reversed) REVERSED=1 ;;
       -d|--debug)    DEBUG=1 ;;
-      -c|--clear)    [[ -f ${GITSTATUSFILE} ]] && { rm -f "${GITSTATUSFILE}" "${GITSTATUSPRETTY}" ; return 1 ; } ;;
-      -h|--help)     display_help ; return 1 ;;
+      -c|--clear)    [[ -f ${GITSTATUSFILE} ]] && { rm -f "${GITSTATUSFILE}" "${GITSTATUSPRETTY}" ; return 50 ; } ;;
+      -h|--help)     display_help ; return 51 ;;
       --)            break ;;
-      *) require_confirmation "Invalid Gman option '${1}'. Ignore & continue ?" && shift || return 1 ;;
+      *) require_confirmation "Invalid Gman option '${1}'. Ignore & continue ?" && shift || return 52 ;;
     esac
   done
 
@@ -345,7 +344,7 @@ gman() {
   ((DEBUG)) && ((REVERSED)) && echo 'Reversed arguments'
 
 
-  local -r WORKDIR=${PWD}
+  local WORKDIR=${PWD}
   local -r GITROOTDIR=$(basename ${GITROOT})
   local -r GITSTATUSFILE=/tmp/gman/${GITROOTDIR}/.gman_gitstatus
   local -r GITSTATUSPRETTY=/tmp/gman/${GITROOTDIR}/.gman_gitstatus_pretty
@@ -371,7 +370,7 @@ gman() {
   # called with no args or missing or empty gitstatusfile ?
   if [[ ${#} == 0 || ! -f ${GITSTATUSFILE} ]] \
      || [[ -f ${GITSTATUSFILE} && "$(wc -l < "${GITSTATUSFILE}" | awk '{print $1}')" -eq 0 ]] ; then
-    build_gitstatus && show_gitstatus || return 1
+    build_gitstatus && show_gitstatus || return ${?}
     cd "${WORKDIR}"
     return 0
   fi
@@ -385,7 +384,7 @@ gman() {
 
     if grep -q '^[1-9].*[1-9]*$' <<< "${ARG}" ; then # arg is number or range
 
-      build_filelist || return 1
+      build_filelist || return ${?}
 
       if [[ $((i+1)) -eq ${#} ]] ; then # last arg
         ACTION=${DEFAULTACTION}
@@ -416,7 +415,7 @@ gman() {
 
     if [[ -n "${ACTION}" ]] ; then
 
-      run_action || return 1
+      run_action || return ${?}
 
       # reset variables for next action
       FILEARRAY=()
@@ -428,7 +427,7 @@ gman() {
 
   done
 
-  [[ -n "${LASTACTION}" ]] && { ACTION=${LASTACTION} ; run_action ; } || return 1
+  [[ -n "${LASTACTION}" ]] && { ACTION=${LASTACTION} ; run_action ; } || return ${?}
 
   cd "${WORKDIR}"
 }
