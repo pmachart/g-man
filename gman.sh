@@ -257,16 +257,16 @@ run_action() { LOGGER -h "${ACTION}"
       ls -BhF${OPTIONS} "${ARGOPTION}" --group-directories-first "${FILE_DIR}"
       ;;
 
-    rmf) OPTIONS+=' -f' ;;&
+    rmf) OPTIONS=' -f' ;;&
     rm*)
       require_files_exist || return ${?}
 #      eval git rm "${OPTIONS}" "${ARGOPTION}" -- ${FILELIST} 2>/dev/null || rm -i "${OPTIONS}" ${FILELIST}
-      eval git rm "${OPTIONS}" "${ARGOPTION}" ${FILELIST} 2>/dev/null || rm -i "${OPTIONS}" ${FILELIST}
+      eval git rm${OPTIONS} "${ARGOPTION}" ${FILELIST} 2>/dev/null || rm -i${OPTIONS} ${FILELIST}
       ;;
 
     t*)   if [[ -z ${TESTCMD} ]] ; then echo 'No test command configured' ; return 30 ; fi ;;&
     t*c*) OPTIONS+=' --coverage' ;;&
-    t*u*) OPTIONS+=' --updateSnapshot' ;;&
+    t*s*) OPTIONS+=' --updateSnapshot' ;;&
     t*w*) OPTIONS+=' --watch' ;;&
     t*n*) OPTIONS+=' --no-cache' ; rm -rf "${TESTCACHEFOLDER}" ;;&
     t*)
@@ -276,10 +276,12 @@ run_action() { LOGGER -h "${ACTION}"
         local BASENAME=$(basename ${FILE})
         local BASENOEXT=${BASENAME%.${EXTMAIN}}
         local BASENOEXT=${BASENOEXT%.${EXTTEST}}
-        type -t horiz && horiz || echo '----------------------------'
-        echo "  ${CYAN}${BOLD}Testing ${RED}${BASENOEXT}.${EXTMAIN}${CYAN} with params:${RED}${TESTPARAMS}${RESET}"
-        type -t horiz && horiz || echo '----------------------------'
-        eval ${TESTCMD} ${TESTPARAMS} ${RELDIR}/${BASENOEXT}.${EXTTEST}.${EXTMAIN}
+        [[ -n $(type -t horiz) ]] && horiz || echo '----------------------------'
+        echo "  ${CYAN}${BOLD}Testing ${RED}${BASENOEXT}.${EXTMAIN}${CYAN} with params:${RED}${OPTIONS}${RESET}"
+        [[ -n $(type -t horiz) ]] && horiz || echo '----------------------------'
+        local COVERAGEFROM
+        [[ ${OPTIONS} =~ 'coverage' ]] && COVERAGEFROM="--collectCoverageFrom ${RELDIR}/${BASENOEXT}.${EXTMAIN}"
+        eval ${TESTCMD} ${OPTIONS} ${RELDIR}/${BASENOEXT}.${EXTTEST}.${EXTMAIN} ${COVERAGEFROM}
         if [[ ${ARG} =~ o && ${ARG} =~ c ]] ; then
           xdg-open ./coverage/lcov-report/${BASENOEXT}.${EXTMAIN}.html > /dev/null 2>/dev/null # TODO redirect too long
         fi
