@@ -196,6 +196,7 @@ run_action() { LOGGER -h "${ACTION}"
       return 0
       ;;
     'add' | 'a')   eval git add "${ARGOPTION}" -- ${FILELIST} ;;
+    'ap')          eval git add -p "${ARGOPTION}" -- ${FILELIST} ;;
     'oops')
       eval git add -- ${FILELIST}
       git commit --amend --no-edit --no-verify
@@ -214,7 +215,7 @@ run_action() { LOGGER -h "${ACTION}"
         eval git checkout -- ${FILE}
       done
       ;;
-    # 'stash')       eval git stash push -- ${FILELIST} ;; # TODO make sure this works as excpected
+    'sp')          eval git stash push -- ${FILELIST} ;;
     'hist'  | 'h') eval git log -u "${ARGOPTION}" -- ${FILELIST} ;;
     'reset' | 'r') eval git reset -- ${FILELIST} ;;
 
@@ -300,6 +301,13 @@ run_action() { LOGGER -h "${ACTION}"
 
 gman() {
 
+  # store environment variables
+  ((DEBUG)) && local ENV_DEBUG=1
+  ((REVERSED)) && local ENV_REVERSED=1
+
+  # Add local node_modules to $PATH for easier usage. Reset to default at end of script.
+  local OLDPATH=${PATH} && PATH=${PATH}:./node_modules/.bin
+
   [[ ! $(command -v git) ]] && {
     echo "\n  Gman requires git to be installed. Exiting."
     return 40
@@ -342,7 +350,11 @@ gman() {
     esac
   done
 
-  ((DEBUG)) && { clear ; printf 'gman %s\n' "${@}" ; } # term readability when debugging
+  # override user config with environment variable
+  ((ENV_DEBUG)) && DEBUG=1
+  ((ENV_REVERSED)) && REVERSED=1
+
+  ((DEBUG)) && { clear ; printf 'Running gman in debug mode with arguments :%s\n' "${@}" ; }
   ((DEBUG)) && ((REVERSED)) && echo 'Reversed arguments'
 
 
@@ -431,6 +443,8 @@ gman() {
 
   [[ -n "${LASTACTION}" ]] && { ACTION=${LASTACTION} ; run_action ; } || return ${?}
 
+  # restore original path and change directory back
+  PATH=${OLDPATH}
   cd "${WORKDIR}"
 }
 

@@ -1,8 +1,7 @@
 # G-Man
-<img src="images/suitcase.jpg" height="130" align="right">
+<img src="images/suitcase.jpg" height="130" align="right" style="padding-left:30px">
 A simple bash script to accelerate your daily git workflow.
 
-----
 
 ## Description
 
@@ -20,7 +19,6 @@ g 3 4 t  # run tests on the third and fourth files
 g 2-5 d  # display diff for files 2 3 4 and 5
 ```
 
-----
 
 ## Installation
 
@@ -41,7 +39,6 @@ Adjust the path according to where you saved the script.
 
 Note: Gman has to be run in source mode (.) to enable some actions like `cd`ing to the directory of a file.
 
-----
 
 ## Usage
 
@@ -67,7 +64,6 @@ to refresh the list and make sure you are not performing actions on the wrong fi
 
 (Prompt on these screenshots is with <a href="https://github.com/magicmonty/bash-git-prompt" target="_blank">MagicMonty's bash-git-prompt</a>)
 
-----
 
 ## Available commands
 This is just a short list of some of the available actions.
@@ -78,6 +74,7 @@ Contributions for more custom commands are very welcome.
 | Command and shorthand | Description |
 | --- | --- |
 | add, a | `git add` |
+| ap | `git add -p` |
 | oops | adds file to the last non-pushed commit |
 | r, reset | `git reset` |
 | rm | `git rm \|\| rm` (does a simple `rm` if the file isn't tracked) adding `f` to the command adds the -f parameter (eg: g 3 rmf) |
@@ -85,18 +82,24 @@ Contributions for more custom commands are very welcome.
 | diff, d | shows a `diff` of the file |
 | ds | "short" version : compact, less verbose diff output |
 | dc | shows a `diff --cached` of the file |
+| dsc, dcs | short and cached |
+| sp | `git stash push` |
+| hist | `git log -u` |
 
 ### Eslint / Jest related
 | Command and shorthand | Description |
 | --- | --- |
 | lint | run `eslint` on the file |
-| fix | run `estlint --fix` on the file |
+| lintfix | run `estlint --fix` on the file |
 | t | Runs `jest` on the file, or runs the file itself if it is a test file.<br>It is configured for `file.js` &#8596; `file.test.js` file naming.<br>You might want to change this. |
 | tc | `jest --coverage` |
 | tw | `jest --watch` |
 | tu | `jest --updateSnapshot` |
 | tcwu | yep, you can combine ! |
 | twuc | yep, in any order ! |
+| tco | runs coverage, opens html report in default browser |
+
+_Pro tip for the html report : use a bookmarklet or a browser extention to auto-refresh it every few seconds and use `tcw` in your terminal. Voilà ! You have a live visualization of your line coverage !_
 
 ### Filesystem related
 | Command and shorthand | Description |
@@ -121,8 +124,6 @@ Contributions for more custom commands are very welcome.
 | print, p | simple output of the file(s) for piping xargsing `and` $(more)... ;) |
 
 
-----
-
 ## Customization
 
 ### Actions
@@ -140,7 +141,6 @@ For example you could type `g a 2 n 3` to stage file number 2 and nano file numb
 Try it out by supplying the `-r` parameter in first position (`g -r a 2 n 3`)
 If you want this to change permanently, you can edit the line `REVERSED=0` in the user config part of the script.
 
-----
 
 ## Contributions
 
